@@ -22,16 +22,37 @@ The real Sessantaquattro+ connects as a **TCP client** to the app's server on po
 pip install numpy
 ```
 
-## Quick Start
+## Using with the App
 
-1. **Start the PyQt5 app** (it opens the TCP server on port 45454)
-2. **Run the emulator:**
+The app does **not** run the TCP server on startup. It only opens the server socket when you press **Stream**, **Record**, or **Calibrate** in the Live Data view. The app also normally requires the PC to be on the device's `192.168.1.x` WiFi network — emulator mode bypasses this check.
+
+### Setup (one-time)
+
+Set the environment variable before launching the app:
 
 ```bash
-python emulator.py
+# Windows (Command Prompt)
+set SESSANTAQUATTRO_EMULATOR=1
+
+# Windows (PowerShell)
+$env:SESSANTAQUATTRO_EMULATOR = "1"
+
+# macOS / Linux
+export SESSANTAQUATTRO_EMULATOR=1
 ```
 
-The emulator connects, waits for the app to send a start command, then begins streaming data. Press `Ctrl+C` to stop.
+### Step-by-step workflow
+
+1. **Start the app** with the env var set — navigate to the Live Data screen
+2. **Press Stream** (or Record / Calibrate) — the app opens the TCP server on port 45454 and blocks waiting for a connection (10-second timeout)
+3. **Run the emulator** within that 10-second window:
+   ```bash
+   python emulator.py
+   ```
+4. The emulator connects, receives the start command, and begins streaming synthetic data
+5. **Press Stop** in the app to end the session — the emulator detects the stop command, halts, and waits to reconnect
+
+If you start the emulator before the app opens the server, it will print "Connection refused" and retry every 2 seconds until the server is available.
 
 ## CLI Options
 
@@ -140,6 +161,46 @@ When the app sends a command with `GETSET=1`, the emulator responds with:
 | `001` | 2 bytes: firmware version (1, 26) |
 | `010` | 1 byte: battery level (85%) |
 
+## Testing with Android (Kivy App)
+
+A build flag in `mobile_app/app/core/config.py` controls emulator mode for APK builds. Set it before building to bypass the 192.168.1.x WiFi check; your phone and PC just need to be on the same WiFi network.
+
+### Build and install
+
+In `mobile_app/app/core/config.py`, set the build flag:
+
+```python
+EMULATOR_BUILD = True
+```
+
+Then build and install:
+
+```bash
+# In the mobile_app directory
+buildozer android debug
+adb install -r bin/*.apk
+```
+
+### Step-by-step workflow
+
+1. Connect your phone and PC to the **same WiFi network**
+2. Find your phone's local IP: **Settings > WiFi > tap the network > IP address**
+3. Open the app on your phone > **Live Data** > press **Stream**
+4. Within 10 seconds, run on your PC:
+   ```bash
+   python emulator.py --host <phone-ip>
+   # e.g. python emulator.py --host 192.168.0.42
+   ```
+5. The emulator connects and the phone displays live streaming data
+
+### Before building a production APK
+
+Revert the flag in `mobile_app/app/core/config.py`:
+
+```python
+EMULATOR_BUILD = False
+```
+
 ## Debugging Live Plot Lag
 
 This emulator is particularly useful for isolating live plotting performance issues. The recommended approach:
@@ -154,6 +215,6 @@ The emulator prints packet rate statistics every 100 packets so you can verify i
 ## Limitations
 
 - **16-bit resolution only.** 24-bit (`HRES=1`) sample packing is not implemented.
-- **No WiFi AP emulation.** The emulator connects over your existing network. To replicate the device's WiFi access point behavior (for testing the full connection flow), run this on a Raspberry Pi configured as a WiFi AP with `hostapd`.
+- **No WiFi AP emulation.** The emulator connects over localhost or your existing network. Desktop builds use the `SESSANTAQUATTRO_EMULATOR=1` env var; Android APKs use the `EMULATOR_BUILD` flag in `config.py` (see "Testing with Android" above).
 - **No real physiological data.** The emulator tests your software pipeline and communication layer only. Final validation must use the real device with actual electrodes and a human subject.
 - **SD card recording commands (`REC`) are acknowledged but ignored** since there is no physical storage to write to.
